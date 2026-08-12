@@ -70,6 +70,7 @@ interface SyllabusSubject {
 
 export function App() {
   const [view, setView] = useState<'timetable' | 'syllabus' | 'subject-detail'>('timetable');
+  const [returnView, setReturnView] = useState<'timetable' | 'syllabus'>('syllabus');
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
   const [activeDayIdx, setActiveDayIdx] = useState<number>(0);
   const [now, setNow] = useState<Date>(new Date());
@@ -85,6 +86,70 @@ export function App() {
   useEffect(() => {
     document.documentElement.classList.add('dark');
   }, []);
+
+  // Helper to parse current location pathname
+  const parsePath = () => {
+    const path = window.location.pathname;
+    if (path.startsWith('/subject/')) {
+      const subId = path.replace('/subject/', '').replace(/\/$/, '');
+      return { view: 'subject-detail' as const, selectedSubjectId: subId };
+    } else if (path === '/syllabus' || path === '/syllabus/') {
+      return { view: 'syllabus' as const, selectedSubjectId: null };
+    }
+    return { view: 'timetable' as const, selectedSubjectId: null };
+  };
+
+  // Sync real URL path routing & phone back button (popstate)
+  useEffect(() => {
+    const initial = parsePath();
+    setView(initial.view);
+    if (initial.selectedSubjectId) {
+      setSelectedSubjectId(initial.selectedSubjectId);
+    }
+
+    const handlePopState = (e: PopStateEvent) => {
+      const parsed = parsePath();
+      setView(parsed.view);
+      if (parsed.selectedSubjectId) {
+        setSelectedSubjectId(parsed.selectedSubjectId);
+      }
+      if (e.state && e.state.returnView) {
+        setReturnView(e.state.returnView);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // Central Router Navigation Function with Real Clean URL Pathnames
+  const navigateTo = (
+    newView: 'timetable' | 'syllabus' | 'subject-detail',
+    subjectId?: string,
+    originView?: 'timetable' | 'syllabus'
+  ) => {
+    const effectiveReturn = originView || (newView === 'subject-detail' ? returnView : 'timetable');
+    if (originView) {
+      setReturnView(originView);
+    }
+
+    let targetPath = '/';
+    if (newView === 'syllabus') {
+      targetPath = '/syllabus';
+    } else if (newView === 'subject-detail' && subjectId) {
+      targetPath = `/subject/${subjectId}`;
+    }
+
+    if (window.location.pathname !== targetPath) {
+      window.history.pushState({ returnView: effectiveReturn }, '', targetPath);
+    }
+
+    setView(newView);
+    if (subjectId) {
+      setSelectedSubjectId(subjectId);
+    }
+    window.scrollTo(0, 0);
+  };
 
   // Check PWA Standalone status, detect OS, and intercept beforeinstallprompt event
   useEffect(() => {
@@ -905,7 +970,7 @@ export function App() {
   const selectedSubject = syllabusSubjects.find((sub) => sub.id === selectedSubjectId);
 
   return (
-    <div className="bg-black text-white font-sans select-none min-h-screen w-full relative">
+    <div className="mesh-bg page-bg text-white font-sans select-none min-h-screen w-full relative flex flex-col justify-center">
 
       {/* PWA Custom Bottom Install Banner */}
       {showInstallBanner && (
@@ -1104,16 +1169,29 @@ export function App() {
         /* ========================================================================= */
         /* SUBJECT DETAIL PAGE (Active when view === 'subject-detail')              */
         /* ========================================================================= */
-        <div className="min-h-screen w-full max-w-4xl mx-auto p-4 sm:p-6 bg-black text-white flex flex-col space-y-6">
+        <div className="w-full min-h-screen mesh-bg page-bg text-white">
+          {/* Ambient glow orbs */}
+          <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden" aria-hidden>
+            <div style={{ position: 'absolute', top: '8%', right: '15%', width: '220px', height: '220px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(99,102,241,0.085) 0%, transparent 70%)', filter: 'blur(28px)' }} />
+            <div style={{ position: 'absolute', top: '50%', left: '5%', width: '160px', height: '160px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(139,92,246,0.075) 0%, transparent 70%)', filter: 'blur(22px)' }} />
+            <div style={{ position: 'absolute', bottom: '20%', right: '10%', width: '140px', height: '140px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(16,185,129,0.065) 0%, transparent 70%)', filter: 'blur(20px)' }} />
+          </div>
+        <div className="relative z-10 max-w-4xl mx-auto p-4 sm:p-6 flex flex-col space-y-6">
           
           {/* Subject Detail Navbar */}
           <header className="flex items-center justify-between pb-3 border-b border-neutral-800 shrink-0">
             <button
-              onClick={() => setView('syllabus')}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 active:scale-[0.96] active:bg-neutral-800 text-xs sm:text-sm font-bold text-white transition-all cursor-pointer"
+              onClick={() => {
+                if (returnView === 'timetable') {
+                  navigateTo('timetable');
+                } else {
+                  navigateTo('syllabus');
+                }
+              }}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 active:scale-[0.96] text-xs sm:text-sm font-bold text-white transition-all cursor-pointer"
             >
               <ArrowLeft className="w-4 h-4" />
-              <span>Syllabus List</span>
+              <span>{returnView === 'timetable' ? 'Back' : 'Syllabus List'}</span>
             </button>
 
             <div className="flex items-center gap-2">
@@ -1123,9 +1201,9 @@ export function App() {
             </div>
           </header>
 
-          {/* Subject Header */}
-          <div className="flex items-center gap-4 p-4 sm:p-5 rounded-2xl border border-neutral-800 bg-neutral-950/80">
-            <div className="p-3 rounded-xl bg-neutral-900 border border-neutral-800 shadow-md shrink-0 flex items-center justify-center">
+          {/* Subject Header - Deep Black Container */}
+          <div className="flex items-center gap-4 p-4 sm:p-5 rounded-2xl bg-black border border-neutral-800 shadow-2xl outline-none ring-0 focus:outline-none select-none">
+            <div className="p-3 rounded-xl bg-neutral-900 border border-neutral-800 shadow-inner shrink-0 flex items-center justify-center">
               {React.createElement(selectedSubject.icon, { className: "w-6 h-6 text-white stroke-[2]" })}
             </div>
             <div>
@@ -1144,9 +1222,9 @@ export function App() {
               selectedSubject.units.map((unit) => (
                 <div
                   key={unit.unitNumber}
-                  className="p-4 sm:p-6 rounded-2xl border border-neutral-800 bg-black space-y-3 transition-all"
+                  className="p-4 sm:p-6 rounded-2xl glass-card space-y-3 transition-all"
                 >
-                  {/* Unit Title Header Row (Increased font size accordingly) */}
+                  {/* Unit Title Header Row */}
                   <div className="pb-2.5 border-b border-neutral-800/80">
                     <h2 className="text-lg sm:text-xl font-black text-white tracking-tight">
                       Unit {unit.unitNumber} &nbsp;—&nbsp; {unit.title}
@@ -1175,24 +1253,32 @@ export function App() {
                 </div>
               ))
             ) : (
-              <div className="p-8 rounded-2xl border border-neutral-800 bg-neutral-950/60 text-center text-neutral-500 font-medium">
+              <div className="p-8 rounded-2xl glass-card-muted text-center text-neutral-500 font-medium">
                 Syllabus content for {selectedSubject.name} will be added soon...
               </div>
             )}
           </div>
 
         </div>
+        </div>
       ) : view === 'syllabus' ? (
         /* ========================================================================= */
         /* SYLLABUS LIST PAGE (Active when view === 'syllabus')                      */
         /* ========================================================================= */
-        <div className="min-h-screen w-full max-w-4xl mx-auto p-4 sm:p-6 bg-black text-white flex flex-col space-y-6">
+        <div className="w-full min-h-screen mesh-bg page-bg text-white">
+          {/* Ambient glow orbs */}
+          <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden" aria-hidden>
+            <div style={{ position: 'absolute', top: '10%', left: '20%', width: '200px', height: '200px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(99,102,241,0.07) 0%, transparent 70%)', filter: 'blur(26px)' }} />
+            <div style={{ position: 'absolute', top: '50%', right: '8%', width: '150px', height: '150px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(16,185,129,0.055) 0%, transparent 70%)', filter: 'blur(20px)' }} />
+            <div style={{ position: 'absolute', bottom: '18%', left: '6%', width: '170px', height: '170px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(139,92,246,0.05) 0%, transparent 70%)', filter: 'blur(24px)' }} />
+          </div>
+        <div className="relative z-10 max-w-4xl mx-auto p-4 sm:p-6 flex flex-col space-y-6">
           
           {/* Syllabus Navbar Header */}
           <header className="flex items-center justify-between pb-3 border-b border-neutral-800 shrink-0">
             <button
-              onClick={() => setView('timetable')}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 active:scale-[0.96] active:bg-neutral-800 text-xs sm:text-sm font-bold text-white transition-all cursor-pointer"
+              onClick={() => navigateTo('timetable')}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 active:scale-[0.96] text-xs sm:text-sm font-bold text-white transition-all cursor-pointer"
             >
               <ArrowLeft className="w-4 h-4" />
               <span>Timetable</span>
@@ -1208,14 +1294,13 @@ export function App() {
               </h1>
             </div>
             
-            {/* Real Double Scratch Hand-Drawn SVG Underline (Left-to-Right + Right-to-Left loop back) */}
+            {/* Real Double Scratch Hand-Drawn SVG Underline */}
             <svg 
               className="w-48 sm:w-56 h-5 mt-1 text-white opacity-95 overflow-visible" 
               viewBox="0 0 200 24" 
               fill="none" 
               xmlns="http://www.w3.org/2000/svg"
             >
-              {/* First scratch stroke: Left to Right */}
               <path 
                 d="M 6 8 C 50 3, 110 13, 194 7" 
                 stroke="currentColor" 
@@ -1223,7 +1308,6 @@ export function App() {
                 strokeLinecap="round" 
                 strokeLinejoin="round" 
               />
-              {/* Second scratch stroke: Right to Left loop back */}
               <path 
                 d="M 188 14 C 140 20, 60 11, 14 18" 
                 stroke="currentColor" 
@@ -1243,15 +1327,12 @@ export function App() {
               return (
                 <div
                   key={sub.id}
-                  onClick={() => {
-                    setSelectedSubjectId(sub.id);
-                    setView('subject-detail');
-                  }}
-                  className="p-4 sm:p-5 rounded-2xl border border-neutral-800 bg-neutral-950/80 hover:border-neutral-700 active:border-neutral-600 active:scale-[0.98] active:bg-neutral-900 transition-all duration-150 shadow-sm flex items-center justify-between gap-3 cursor-pointer group"
+                  onClick={() => navigateTo('subject-detail', sub.id, 'syllabus')}
+                  className="p-4 sm:p-5 rounded-2xl glass-card flex items-center justify-between gap-3 cursor-pointer group"
                 >
                   {/* Subject Icon Box & Name + Code Only */}
                   <div className="flex items-center gap-3.5 min-w-0">
-                    <div className="p-2.5 sm:p-3 rounded-xl bg-neutral-900 border border-neutral-800 shadow-md shrink-0 flex items-center justify-center group-hover:border-neutral-700 transition">
+                    <div className="p-2.5 sm:p-3 rounded-xl shrink-0 flex items-center justify-center transition" style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)' }}>
                       <Icon className="w-5 h-5 text-white stroke-[2]" />
                     </div>
                     <div className="min-w-0">
@@ -1270,13 +1351,13 @@ export function App() {
             })}
           </div>
 
-          {/* Ultra-Clean Responsive Course Booklet PDF Card with Minimalistic Touch Feedback */}
+          {/* Ultra-Clean Responsive Course Booklet PDF Card */}
           <div className="pt-3 pb-4">
             <a
               href="/csok.pdf"
               target="_blank"
               rel="noopener noreferrer"
-              className="p-4 sm:p-5 rounded-2xl border border-neutral-700 bg-neutral-900/90 hover:bg-neutral-800/90 hover:border-neutral-500 active:scale-[0.98] active:border-neutral-400 active:bg-neutral-800/90 transition-all duration-150 shadow-lg shadow-black/80 flex items-center justify-between gap-3 group cursor-pointer"
+              className="p-4 sm:p-5 rounded-2xl glass-card flex items-center justify-between gap-3 group cursor-pointer" style={{ borderColor: 'rgba(255,255,255,0.12)' }}
             >
               <div className="flex items-center gap-3.5 min-w-0">
                 <div className="p-2.5 sm:p-3 rounded-xl bg-white text-black shadow-md shrink-0 flex items-center justify-center group-hover:scale-105 transition transform">
@@ -1297,7 +1378,7 @@ export function App() {
                 </div>
               </div>
 
-              <div className="px-3 py-1.5 rounded-lg bg-black border border-neutral-800 text-white group-hover:border-neutral-600 transition shrink-0 flex items-center gap-1.5 text-xs font-bold shadow-xs">
+              <div className="px-3 py-1.5 rounded-lg text-white transition shrink-0 flex items-center gap-1.5 text-xs font-bold" style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)' }}>
                 <span>Open</span>
                 <ExternalLink className="w-3.5 h-3.5" />
               </div>
@@ -1305,181 +1386,184 @@ export function App() {
           </div>
 
         </div>
+        </div>
       ) : (
         /* ========================================================================= */
         /* TIMETABLE VIEW (Active when view === 'timetable')                       */
         /* ========================================================================= */
         <>
           {/* ================= DESKTOP & LANDSCAPE MOBILE VIEW (md and up) ================= */}
-          <div className="hidden md:flex flex-col min-h-screen w-full bg-black">
+          <div className="hidden md:flex flex-col w-full max-w-6xl mx-auto px-4 py-8 sm:py-12 my-auto">
             
-            <div className="w-full max-w-6xl mx-auto p-2 sm:p-4 flex-1 flex flex-col">
-              {/* Desktop / Landscape Header with Syllabus Button */}
-              <header className="flex items-center justify-between pb-2 mb-2 border-b border-neutral-800 shrink-0">
-                <div>
-                  <h1 className="text-lg sm:text-2xl font-black tracking-tight uppercase text-white">
-                    Btech CS3B
-                  </h1>
-                  <p className="text-[11px] sm:text-sm font-semibold text-neutral-400">
-                    Classroom: <span className="font-extrabold text-white">E112</span> • Timetable
-                  </p>
-                </div>
+            {/* Desktop / Landscape Header with Syllabus Button */}
+            <header className="flex items-center justify-between pb-3 mb-4 border-b border-neutral-800 shrink-0">
+              <div>
+                <h1 className="text-xl sm:text-2xl font-black tracking-tight uppercase text-white">
+                  Btech CS3B
+                </h1>
+                <p className="text-xs sm:text-sm font-semibold text-neutral-400 mt-0.5">
+                  Classroom: <span className="font-extrabold text-white">E112</span> • Timetable
+                </p>
+              </div>
 
-                {/* Syllabus Button on Desktop Header */}
-                <button
-                  onClick={() => setView('syllabus')}
-                  className="flex items-center gap-2 px-3.5 py-1.5 rounded-lg border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 hover:border-neutral-700 active:scale-[0.96] text-xs sm:text-sm font-bold text-white transition-all cursor-pointer shadow-xs"
-                >
-                  <BookOpenText className="w-4 h-4 text-white" />
-                  <span>Syllabus</span>
-                </button>
-              </header>
+              {/* Syllabus Button on Desktop Header */}
+              <button
+                onClick={() => navigateTo('syllabus')}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 hover:border-neutral-700 active:scale-[0.96] text-xs sm:text-sm font-bold text-white transition-all cursor-pointer shadow-md"
+              >
+                <BookOpenText className="w-4 h-4 text-white" />
+                <span>Syllabus</span>
+              </button>
+            </header>
 
-              {/* Desktop / Landscape Scrollable Grid Container */}
-              <main className="flex-1 w-full border border-neutral-800 rounded overflow-x-auto overflow-y-auto flex flex-col min-h-[460px] bg-black">
-                <table className="w-full h-full min-h-[440px] border-collapse text-center table-fixed">
-                  <thead>
-                    <tr className="bg-black text-white border-b border-neutral-800 font-bold text-xs sm:text-sm">
-                      <th className="w-[7%] border-r border-neutral-800 py-2 bg-black uppercase tracking-wider text-neutral-300">
-                        DAY
+            {/* Desktop Sleek Rounded Table Card */}
+            <main className="w-full border border-neutral-800 rounded-2xl bg-neutral-950/90 shadow-2xl shadow-black overflow-hidden backdrop-blur-md">
+              <table className="w-full border-collapse text-center table-fixed">
+                <thead>
+                  <tr className="bg-neutral-900/90 text-white border-b border-neutral-800 font-bold text-xs sm:text-sm">
+                    <th className="w-[8%] border-r border-neutral-800 py-3.5 px-2 uppercase tracking-wider text-neutral-300 font-extrabold">
+                      DAY
+                    </th>
+                    
+                    {periodHeaders.map((header, idx) => (
+                      <th
+                        key={idx}
+                        className={`border-r border-neutral-800 py-3 px-1.5 ${
+                          header.isLunch ? 'w-[6%] font-extrabold text-white bg-neutral-900/50' : ''
+                        }`}
+                      >
+                        <div className="font-extrabold truncate text-white text-xs sm:text-sm">{header.period}</div>
+                        <div className="text-[10px] sm:text-xs font-normal font-mono text-neutral-400 mt-0.5">
+                          {header.time}
+                        </div>
                       </th>
-                      
-                      {periodHeaders.map((header, idx) => (
-                        <th
-                          key={idx}
-                          className={`border-r border-neutral-800 py-1 px-1 bg-black ${
-                            header.isLunch ? 'w-[6%] font-extrabold text-white' : ''
-                          }`}
-                        >
-                          <div className="font-extrabold truncate text-white text-xs sm:text-sm">{header.period}</div>
-                          <div className="text-[9.5px] sm:text-xs font-normal font-mono text-neutral-400">
-                            {header.time}
-                          </div>
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-
-                  <tbody className="divide-y divide-neutral-800 font-medium text-xs sm:text-sm bg-black">
-                    {scheduleData.map((dayRow, dayIdx) => (
-                      <tr key={dayRow.dayCode} className="h-[19%] min-h-[70px] border-b border-neutral-800 bg-black">
-                        
-                        {/* Day Header Column */}
-                        <td className="font-black text-xs sm:text-base border-r border-neutral-800 bg-black text-white uppercase tracking-wider">
-                          {dayRow.dayCode}
-                        </td>
-
-                        {/* Pre-Lunch Slots (P1 to P5) */}
-                        {dayRow.preLunch.map((slot, slotIdx) => {
-                          const active = isSlotActive(dayRow.dayCode, slot.startTime, slot.endTime);
-                          const subjectId = !slot.isFree ? getSubjectIdFromName(slot.name) : null;
-
-                          return (
-                            <td
-                              key={`pre-${slotIdx}`}
-                              colSpan={slot.colSpan || 1}
-                              onClick={() => {
-                                if (subjectId) {
-                                  setSelectedSubjectId(subjectId);
-                                  setView('subject-detail');
-                                }
-                              }}
-                              className={`p-1 align-middle bg-black text-white font-bold transition-all ${
-                                subjectId ? 'cursor-pointer hover:bg-neutral-900/80 active:scale-[0.98]' : ''
-                              } ${
-                                active
-                                  ? 'border-2 border-emerald-400 font-extrabold shadow-sm shadow-emerald-500/20'
-                                  : 'border-r border-neutral-800'
-                              }`}
-                            >
-                              {!slot.isFree && (
-                                <div className="flex flex-col items-center justify-center h-full space-y-0.5">
-                                  <span className="leading-tight text-center font-extrabold text-[11px] sm:text-xs md:text-sm text-white">
-                                    {slot.name}
-                                  </span>
-                                  {slot.room && (
-                                    <span className="text-[9px] sm:text-[10px] font-mono font-bold px-1 py-0.5 rounded bg-neutral-900 border border-neutral-800 text-neutral-300 shadow-xs">
-                                      {slot.room}
-                                    </span>
-                                  )}
-                                </div>
-                              )}
-                            </td>
-                          );
-                        })}
-
-                        {/* Lunch Column (Merged Vertically across all 5 rows) */}
-                        {dayIdx === 0 && (
-                          <td
-                            rowSpan={5}
-                            className="border-r border-neutral-800 bg-black text-neutral-300 font-black text-sm sm:text-lg align-middle"
-                          >
-                            <div className="flex flex-col items-center justify-center space-y-1.5 sm:space-y-4 font-black tracking-widest text-neutral-300">
-                              <span>L</span>
-                              <span>U</span>
-                              <span>N</span>
-                              <span>C</span>
-                              <span>H</span>
-                            </div>
-                          </td>
-                        )}
-
-                        {/* Post-Lunch Slots (P6 to P8) */}
-                        {dayRow.postLunch.map((slot, slotIdx) => {
-                          const active = isSlotActive(dayRow.dayCode, slot.startTime, slot.endTime);
-                          const subjectId = !slot.isFree ? getSubjectIdFromName(slot.name) : null;
-
-                          return (
-                            <td
-                              key={`post-${slotIdx}`}
-                              colSpan={slot.colSpan || 1}
-                              onClick={() => {
-                                if (subjectId) {
-                                  setSelectedSubjectId(subjectId);
-                                  setView('subject-detail');
-                                }
-                              }}
-                              className={`p-1 align-middle bg-black text-white font-bold transition-all ${
-                                subjectId ? 'cursor-pointer hover:bg-neutral-900/80 active:scale-[0.98]' : ''
-                              } ${
-                                active
-                                  ? 'border-2 border-emerald-400 font-extrabold shadow-sm shadow-emerald-500/20'
-                                  : 'border-r border-neutral-800'
-                              }`}
-                            >
-                              {!slot.isFree && (
-                                <div className="flex flex-col items-center justify-center h-full space-y-0.5">
-                                  <span className="leading-tight text-center font-extrabold text-[11px] sm:text-xs md:text-sm text-white">
-                                    {slot.name}
-                                  </span>
-                                  {slot.room && (
-                                    <span className="text-[9px] sm:text-[10px] font-mono font-bold px-1 py-0.5 rounded bg-neutral-900 border border-neutral-800 text-neutral-300 shadow-xs">
-                                      {slot.room}
-                                    </span>
-                                  )}
-                                </div>
-                              )}
-                            </td>
-                          );
-                        })}
-
-                      </tr>
                     ))}
-                  </tbody>
-                </table>
-              </main>
-            </div>
+                  </tr>
+                </thead>
 
+                <tbody className="divide-y divide-neutral-800/80 font-medium text-xs sm:text-sm">
+                  {scheduleData.map((dayRow, dayIdx) => (
+                    <tr key={dayRow.dayCode} className="border-b border-neutral-800/80 hover:bg-neutral-900/40 transition-colors">
+                      
+                      {/* Day Header Column */}
+                      <td className="font-black text-xs sm:text-base border-r border-neutral-800 bg-neutral-900/50 text-white uppercase tracking-wider py-4 px-3">
+                        {dayRow.dayCode}
+                      </td>
+
+                      {/* Pre-Lunch Slots (P1 to P5) */}
+                      {dayRow.preLunch.map((slot, slotIdx) => {
+                        const active = isSlotActive(dayRow.dayCode, slot.startTime, slot.endTime);
+                        const subjectId = !slot.isFree ? getSubjectIdFromName(slot.name) : null;
+
+                        return (
+                          <td
+                            key={`pre-${slotIdx}`}
+                            colSpan={slot.colSpan || 1}
+                            onClick={() => {
+                              if (subjectId) {
+                                navigateTo('subject-detail', subjectId, 'timetable');
+                              }
+                            }}
+                            className={`p-2 sm:p-3.5 align-middle font-bold transition-all ${
+                              subjectId ? 'cursor-pointer hover:bg-neutral-800/60 active:scale-[0.98]' : ''
+                            } ${
+                              active
+                                ? 'border-2 border-emerald-400 bg-emerald-950/30 text-white font-extrabold shadow-md shadow-emerald-500/20'
+                                : 'border-r border-neutral-800/80'
+                            }`}
+                          >
+                            {!slot.isFree && (
+                              <div className="flex flex-col items-center justify-center space-y-1">
+                                <span className="leading-tight text-center font-extrabold text-xs sm:text-sm text-white">
+                                  {slot.name}
+                                </span>
+                                {slot.room && (
+                                  <span className="text-[9px] sm:text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-neutral-900 border border-neutral-800 text-neutral-300 shadow-xs">
+                                    {slot.room}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </td>
+                        );
+                      })}
+
+                      {/* Lunch Column (Merged Vertically across all 5 rows) */}
+                      {dayIdx === 0 && (
+                        <td
+                          rowSpan={5}
+                          className="border-r border-neutral-800 bg-neutral-900/40 text-neutral-300 font-black text-xs sm:text-sm align-middle select-none"
+                        >
+                          <div className="flex flex-col items-center justify-center space-y-2.5 font-black tracking-[0.25em] text-neutral-300">
+                            <span>L</span>
+                            <span>U</span>
+                            <span>N</span>
+                            <span>C</span>
+                            <span>H</span>
+                          </div>
+                        </td>
+                      )}
+
+                      {/* Post-Lunch Slots (P6 to P8) */}
+                      {dayRow.postLunch.map((slot, slotIdx) => {
+                        const active = isSlotActive(dayRow.dayCode, slot.startTime, slot.endTime);
+                        const subjectId = !slot.isFree ? getSubjectIdFromName(slot.name) : null;
+
+                        return (
+                          <td
+                            key={`post-${slotIdx}`}
+                            colSpan={slot.colSpan || 1}
+                            onClick={() => {
+                              if (subjectId) {
+                                navigateTo('subject-detail', subjectId, 'timetable');
+                              }
+                            }}
+                            className={`p-2 sm:p-3.5 align-middle font-bold transition-all ${
+                              subjectId ? 'cursor-pointer hover:bg-neutral-800/60 active:scale-[0.98]' : ''
+                            } ${
+                              active
+                                ? 'border-2 border-emerald-400 bg-emerald-950/30 text-white font-extrabold shadow-md shadow-emerald-500/20'
+                                : 'border-r border-neutral-800/80'
+                            }`}
+                          >
+                            {!slot.isFree && (
+                              <div className="flex flex-col items-center justify-center space-y-1">
+                                <span className="leading-tight text-center font-extrabold text-xs sm:text-sm text-white">
+                                  {slot.name}
+                                </span>
+                                {slot.room && (
+                                  <span className="text-[9px] sm:text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-neutral-900 border border-neutral-800 text-neutral-300 shadow-xs">
+                                    {slot.room}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </td>
+                        );
+                      })}
+
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </main>
           </div>
 
 
           {/* ================= PORTRAIT MOBILE VIEW (screen width < md) ================= */}
           <div 
-            className="flex md:hidden flex-col min-h-screen w-full bg-black text-white p-4 space-y-4"
+            className="flex md:hidden flex-col min-h-screen w-full text-white p-4 space-y-4 mesh-bg"
+            style={{ background: 'linear-gradient(160deg, #0a0a0c 0%, #0d0d10 50%, #090909 100%)' }}
             onTouchStart={onTouchStart}
             onTouchMove={onTouchMove}
             onTouchEnd={onTouchEnd}
           >
+            {/* Ambient glow orbs for depth */}
+            <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden" aria-hidden>
+              <div style={{ position: 'absolute', top: '12%', left: '20%', width: '180px', height: '180px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(99,102,241,0.07) 0%, transparent 70%)', filter: 'blur(24px)' }} />
+              <div style={{ position: 'absolute', top: '55%', right: '10%', width: '140px', height: '140px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(16,185,129,0.055) 0%, transparent 70%)', filter: 'blur(20px)' }} />
+              <div style={{ position: 'absolute', bottom: '15%', left: '5%', width: '160px', height: '160px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(139,92,246,0.05) 0%, transparent 70%)', filter: 'blur(22px)' }} />
+            </div>
             {/* Mobile Heading with Syllabus Button */}
             <div className="border-b border-neutral-800 pb-2.5 flex items-center justify-between">
               <div>
@@ -1493,7 +1577,7 @@ export function App() {
 
               {/* Syllabus Button on Mobile Header */}
               <button
-                onClick={() => setView('syllabus')}
+                onClick={() => navigateTo('syllabus')}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-neutral-800 bg-neutral-900 active:scale-[0.95] active:bg-neutral-800 text-xs font-bold text-white transition-all cursor-pointer shadow-xs"
               >
                 <BookOpenText className="w-4 h-4 text-white" />
@@ -1501,7 +1585,7 @@ export function App() {
               </button>
             </div>
 
-            {/* Clean Borderless Day Selector Tabs with Smooth Gliding Underline */}
+            {/* Day Selector Tabs with Smooth Gliding Underline */}
             <div className="pb-2 pt-1">
               <div className="grid grid-cols-5 relative">
                 {scheduleData.map((d, idx) => {
@@ -1511,22 +1595,29 @@ export function App() {
                     <button
                       key={d.dayCode}
                       onClick={() => setActiveDayIdx(idx)}
-                      className={`relative py-2 text-xs sm:text-sm font-black uppercase tracking-wider transition-all duration-200 cursor-pointer text-center active:scale-[0.94] ${
-                        isSelected ? 'text-white' : 'text-neutral-500 hover:text-neutral-300'
+                      className={`relative py-2.5 text-xs sm:text-sm font-black uppercase tracking-wider cursor-pointer text-center active:scale-[0.90] ${
+                        isSelected
+                          ? 'text-white'
+                          : 'text-neutral-500 hover:text-neutral-300'
                       }`}
+                      style={{ transition: 'color 0.22s cubic-bezier(0.25,1,0.5,1)' }}
                     >
                       <span>{d.dayCode}</span>
                     </button>
                   );
                 })}
 
-                {/* Smooth Gliding Active Underline Indicator */}
-                <span 
-                  className="absolute bottom-0 h-0.5 bg-white rounded-full transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)] shadow-sm shadow-white/60"
+                {/* Smooth spring-physics gliding underline indicator */}
+                <span
+                  className="tab-indicator absolute bottom-0 rounded-full"
                   style={{
                     left: `calc(${activeDayIdx * 20}% + 10%)`,
                     transform: 'translateX(-50%)',
-                    width: '32px'
+                    width: '28px',
+                    height: '2.5px',
+                    background: 'linear-gradient(90deg, rgba(255,255,255,0.5) 0%, #ffffff 50%, rgba(255,255,255,0.5) 100%)',
+                    boxShadow: '0 0 8px 2px rgba(255,255,255,0.35)',
+                    transition: 'left 0.38s cubic-bezier(0.34,1.56,0.64,1)',
                   }}
                 />
               </div>
@@ -1542,18 +1633,16 @@ export function App() {
                   return (
                     <div
                       key={`mobile-lunch-${idx}`}
-                      className={`p-3.5 rounded-xl text-center font-black text-xs uppercase tracking-widest flex items-center justify-center gap-3 transition-all ${
-                        active
-                          ? 'border-2 border-emerald-400 bg-neutral-950 text-emerald-300'
-                          : 'border border-neutral-800 bg-neutral-950 text-neutral-400'
+                      className={`p-3.5 rounded-2xl text-center font-black text-xs uppercase tracking-widest flex items-center justify-center gap-3 transition-all glass-card-muted ${
+                        active ? 'glass-card-active text-emerald-300' : 'text-neutral-400'
                       }`}
                     >
                       {renderSubjectIconBox('LUNCH')}
                       <div className="flex flex-col items-center">
                         <span>L U N C H &nbsp; B R E A K</span>
                         {item.time && (
-                          <div className="flex items-center gap-1 text-[9.5px] font-semibold text-neutral-400 tracking-tight mt-0.5">
-                            <Clock className="w-2.5 h-2.5 text-neutral-400 shrink-0" />
+                          <div className="flex items-center gap-1 text-[9.5px] font-semibold text-neutral-500 tracking-tight mt-0.5">
+                            <Clock className="w-2.5 h-2.5 text-neutral-500 shrink-0" />
                             <span>{item.time}</span>
                           </div>
                         )}
@@ -1567,30 +1656,27 @@ export function App() {
                     key={`mobile-item-${idx}`}
                     onClick={() => {
                       if (subjectId) {
-                        setSelectedSubjectId(subjectId);
-                        setView('subject-detail');
+                        navigateTo('subject-detail', subjectId, 'timetable');
                       }
                     }}
-                    className={`p-3.5 rounded-xl bg-black text-white transition-all ${
-                      subjectId ? 'cursor-pointer active:scale-[0.98] active:bg-neutral-900' : ''
-                    } ${
-                      active
-                        ? 'border-2 border-emerald-400 shadow-sm shadow-emerald-500/10'
-                        : 'border border-neutral-800 shadow-xs'
-                    }`}
+                    className={`p-3.5 rounded-2xl text-white ${
+                      active ? 'glass-card-active' : 'glass-card'
+                    } ${subjectId ? 'cursor-pointer' : ''}`}
                   >
                     <div className="flex items-center justify-between gap-2">
                       
-                      {/* Rounded Black Box SVG Icon + Subject Name & Minimal Time */}
+                      {/* Icon Box + Subject Name & Time */}
                       <div className="flex items-center gap-3 min-w-0">
                         {renderSubjectIconBox(item.name)}
                         <div className="min-w-0">
-                          <span className="font-extrabold text-base leading-tight text-white block truncate">
+                          <span className={`font-extrabold text-base leading-tight block truncate ${
+                            active ? 'text-emerald-100' : 'text-white'
+                          }`}>
                             {item.name}
                           </span>
                           {item.time && (
-                            <div className="flex items-center gap-1 text-[9.5px] font-semibold text-neutral-400 tracking-tight mt-0.5">
-                              <Clock className="w-2.5 h-2.5 text-neutral-400 shrink-0" />
+                            <div className="flex items-center gap-1 text-[9.5px] font-semibold tracking-tight mt-0.5" style={{ color: active ? 'rgba(110,231,183,0.8)' : 'rgba(163,163,163,0.9)' }}>
+                              <Clock className="w-2.5 h-2.5 shrink-0" />
                               <span>{item.time}</span>
                             </div>
                           )}
@@ -1598,7 +1684,7 @@ export function App() {
                       </div>
 
                       {item.room && (
-                        <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded border border-neutral-700 bg-neutral-900 text-white shrink-0">
+                        <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-lg border border-white/10 text-white/70 shrink-0" style={{ background: 'rgba(255,255,255,0.06)' }}>
                           {item.room}
                         </span>
                       )}
