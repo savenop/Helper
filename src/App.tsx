@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   Clock,
   Coffee,
@@ -973,8 +974,8 @@ export function App() {
     <div className="mesh-bg page-bg text-white font-sans select-none min-h-screen w-full relative flex flex-col justify-center">
 
       {/* PWA Custom Bottom Install Banner */}
-      {showInstallBanner && (
-        <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-6 sm:w-96 z-50 animate-slide-up">
+      {showInstallBanner && createPortal(
+        <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-6 sm:w-96 z-[9999] animate-slide-up">
           <div className="p-4 rounded-2xl bg-neutral-900/95 backdrop-blur-xl border border-neutral-700/80 shadow-2xl shadow-black/90 flex flex-col space-y-3 text-white">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-3 min-w-0">
@@ -1015,12 +1016,13 @@ export function App() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Universal PWA Installation Guide Modal with OS Toggle */}
-      {showInstallGuide && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+      {showInstallGuide && createPortal(
+        <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
           <div className="bg-neutral-900 border border-neutral-700/80 rounded-2xl max-w-md w-full p-5 space-y-4 text-white shadow-2xl relative animate-slide-up">
             
             {/* Modal Header */}
@@ -1162,7 +1164,8 @@ export function App() {
             </button>
 
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {view === 'subject-detail' && selectedSubject ? (
