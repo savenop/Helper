@@ -17,7 +17,14 @@ import {
   ArrowLeft,
   ChevronRight,
   FileText,
-  ExternalLink
+  ExternalLink,
+  Download,
+  X,
+  Share,
+  PlusSquare,
+  Compass,
+  MoreVertical,
+  Smartphone
 } from 'lucide-react';
 
 interface ScheduleSlot {
@@ -67,10 +74,82 @@ export function App() {
   const [activeDayIdx, setActiveDayIdx] = useState<number>(0);
   const [now, setNow] = useState<Date>(new Date());
 
+  // PWA Install Prompt & Guide states
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [showInstallBanner, setShowInstallBanner] = useState<boolean>(false);
+  const [showInstallGuide, setShowInstallGuide] = useState<boolean>(false);
+  const [isIOSDevice, setIsIOSDevice] = useState<boolean>(false);
+  const [installGuideOS, setInstallGuideOS] = useState<'ios' | 'android'>('android');
+
   // Ensure dark mode is strictly active
   useEffect(() => {
     document.documentElement.classList.add('dark');
   }, []);
+
+  // Check PWA Standalone status, detect OS, and intercept beforeinstallprompt event
+  useEffect(() => {
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    setIsIOSDevice(isIOS);
+    setInstallGuideOS(isIOS ? 'ios' : 'android');
+
+    const isStandalone = 
+      window.matchMedia('(display-mode: standalone)').matches || 
+      (navigator as any).standalone === true ||
+      document.referrer.includes('android-app://');
+
+    if (isStandalone) {
+      setShowInstallBanner(false);
+      return;
+    }
+
+    const dismissed = sessionStorage.getItem('pwa_install_dismissed');
+    if (dismissed === 'true') {
+      return;
+    }
+
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setShowInstallBanner(true);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    // Show popup for browser users after 1.5 seconds if not standalone
+    const timer = setTimeout(() => {
+      if (!isStandalone && !sessionStorage.getItem('pwa_install_dismissed')) {
+        setShowInstallBanner(true);
+      }
+    }, 1500);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      clearTimeout(timer);
+    };
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (deferredPrompt) {
+      // Android / Desktop direct instant download 1-tap dialog without going to guide page
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        setShowInstallBanner(false);
+      }
+      setDeferredPrompt(null);
+    } else {
+      // Fallback or iOS device: open installation guide modal with OS tab pre-selected
+      setShowInstallBanner(false);
+      setInstallGuideOS(isIOSDevice ? 'ios' : 'android');
+      setShowInstallGuide(true);
+    }
+  };
+
+  const handleDismissClick = () => {
+    setShowInstallBanner(false);
+    sessionStorage.setItem('pwa_install_dismissed', 'true');
+  };
 
   // Set active day to current day if Mon-Fri, and update clock every 10s
   useEffect(() => {
@@ -827,6 +906,199 @@ export function App() {
 
   return (
     <div className="bg-black text-white font-sans select-none min-h-screen w-full relative">
+
+      {/* PWA Custom Bottom Install Banner */}
+      {showInstallBanner && (
+        <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-6 sm:w-96 z-50 animate-slide-up">
+          <div className="p-4 rounded-2xl bg-neutral-900/95 backdrop-blur-xl border border-neutral-700/80 shadow-2xl shadow-black/90 flex flex-col space-y-3 text-white">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="p-2.5 rounded-xl bg-white text-black shrink-0 flex items-center justify-center shadow-md">
+                  <Download className="w-5 h-5 stroke-[2.5]" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-sm font-extrabold text-white leading-tight truncate">
+                    Install CS Helper
+                  </h3>
+                  <p className="text-xs text-neutral-400 font-medium mt-0.5 leading-snug">
+                    Add to Home Screen for instant offline access
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={handleDismissClick}
+                className="text-neutral-500 hover:text-white p-1 rounded-lg transition shrink-0 cursor-pointer"
+                aria-label="Close install banner"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-800">
+              <button
+                onClick={handleDismissClick}
+                className="px-3 py-1.5 rounded-xl text-xs font-bold text-neutral-400 hover:text-white active:scale-95 transition cursor-pointer"
+              >
+                Not Now
+              </button>
+              <button
+                onClick={handleInstallClick}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-black bg-white text-black hover:bg-neutral-200 active:scale-95 transition cursor-pointer shadow-md"
+              >
+                <Download className="w-3.5 h-3.5 stroke-[2.5]" />
+                <span>Install Now</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Universal PWA Installation Guide Modal with OS Toggle */}
+      {showInstallGuide && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-neutral-900 border border-neutral-700/80 rounded-2xl max-w-md w-full p-5 space-y-4 text-white shadow-2xl relative animate-slide-up">
+            
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-white text-black shrink-0">
+                  {installGuideOS === 'ios' ? (
+                    <Compass className="w-5 h-5 stroke-[2.5]" />
+                  ) : (
+                    <Smartphone className="w-5 h-5 stroke-[2.5]" />
+                  )}
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-white leading-tight">
+                    Installation Guide
+                  </h3>
+                  <p className="text-xs text-neutral-400 font-medium mt-0.5">
+                    Install <span className="font-bold text-white">Btech CS3B</span> on your Home Screen
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowInstallGuide(false)}
+                className="text-neutral-400 hover:text-white p-1 rounded-lg transition cursor-pointer shrink-0"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* OS Selection Toggle Bar */}
+            <div className="flex rounded-xl bg-black p-1 border border-neutral-800">
+              <button
+                onClick={() => setInstallGuideOS('ios')}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-black transition cursor-pointer ${
+                  installGuideOS === 'ios'
+                    ? 'bg-neutral-800 text-white shadow-xs'
+                    : 'text-neutral-500 hover:text-neutral-300'
+                }`}
+              >
+                iOS (iPhone / iPad)
+              </button>
+              <button
+                onClick={() => setInstallGuideOS('android')}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-black transition cursor-pointer ${
+                  installGuideOS === 'android'
+                    ? 'bg-neutral-800 text-white shadow-xs'
+                    : 'text-neutral-500 hover:text-neutral-300'
+                }`}
+              >
+                Android
+              </button>
+            </div>
+
+            {/* Guide Steps based on active OS toggle tab */}
+            {installGuideOS === 'ios' ? (
+              <div className="space-y-3 pt-1">
+                <div className="flex items-start gap-3 p-3 rounded-xl bg-black border border-neutral-800">
+                  <div className="w-6 h-6 rounded-full bg-neutral-800 text-white font-black text-xs flex items-center justify-center shrink-0 border border-neutral-700">
+                    1
+                  </div>
+                  <div className="text-xs space-y-1">
+                    <p className="font-extrabold text-white">Tap the Share Button</p>
+                    <p className="text-neutral-400 leading-relaxed">
+                      Tap the <span className="inline-flex items-center gap-1 font-bold text-white bg-neutral-800 px-1.5 py-0.5 rounded border border-neutral-700"><Share className="w-3 h-3" /> Share</span> icon at the bottom of Safari (or top address bar in Chrome).
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3 p-3 rounded-xl bg-black border border-neutral-800">
+                  <div className="w-6 h-6 rounded-full bg-neutral-800 text-white font-black text-xs flex items-center justify-center shrink-0 border border-neutral-700">
+                    2
+                  </div>
+                  <div className="text-xs space-y-1">
+                    <p className="font-extrabold text-white">Select 'Add to Home Screen'</p>
+                    <p className="text-neutral-400 leading-relaxed">
+                      Scroll down the options list and tap <span className="inline-flex items-center gap-1 font-bold text-white bg-neutral-800 px-1.5 py-0.5 rounded border border-neutral-700"><PlusSquare className="w-3 h-3" /> Add to Home Screen</span>.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3 p-3 rounded-xl bg-black border border-neutral-800">
+                  <div className="w-6 h-6 rounded-full bg-neutral-800 text-white font-black text-xs flex items-center justify-center shrink-0 border border-neutral-700">
+                    3
+                  </div>
+                  <div className="text-xs space-y-1">
+                    <p className="font-extrabold text-white">Confirm & Launch</p>
+                    <p className="text-neutral-400 leading-relaxed">
+                      Tap <span className="font-bold text-white">Add</span> in the top-right corner. <span className="font-bold text-white">Btech CS3B</span> is now installed on your Home Screen!
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3 pt-1">
+                <div className="flex items-start gap-3 p-3 rounded-xl bg-black border border-neutral-800">
+                  <div className="w-6 h-6 rounded-full bg-neutral-800 text-white font-black text-xs flex items-center justify-center shrink-0 border border-neutral-700">
+                    1
+                  </div>
+                  <div className="text-xs space-y-1">
+                    <p className="font-extrabold text-white">Open Browser Menu</p>
+                    <p className="text-neutral-400 leading-relaxed">
+                      Tap the <span className="inline-flex items-center gap-1 font-bold text-white bg-neutral-800 px-1.5 py-0.5 rounded border border-neutral-700"><MoreVertical className="w-3 h-3" /> 3 Dots Menu</span> at the top right of Chrome, Edge, or Brave browser.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3 p-3 rounded-xl bg-black border border-neutral-800">
+                  <div className="w-6 h-6 rounded-full bg-neutral-800 text-white font-black text-xs flex items-center justify-center shrink-0 border border-neutral-700">
+                    2
+                  </div>
+                  <div className="text-xs space-y-1">
+                    <p className="font-extrabold text-white">Tap 'Install App' or 'Add to Home'</p>
+                    <p className="text-neutral-400 leading-relaxed">
+                      Tap <span className="inline-flex items-center gap-1 font-bold text-white bg-neutral-800 px-1.5 py-0.5 rounded border border-neutral-700"><Download className="w-3 h-3" /> Install app</span> or <span className="font-bold text-white">Add to Home screen</span>.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3 p-3 rounded-xl bg-black border border-neutral-800">
+                  <div className="w-6 h-6 rounded-full bg-neutral-800 text-white font-black text-xs flex items-center justify-center shrink-0 border border-neutral-700">
+                    3
+                  </div>
+                  <div className="text-xs space-y-1">
+                    <p className="font-extrabold text-white">Confirm Installation</p>
+                    <p className="text-neutral-400 leading-relaxed">
+                      Tap <span className="font-bold text-white">Install</span> in the dialog to complete installing <span className="font-bold text-white">Btech CS3B</span> on your phone!
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Close Button */}
+            <button
+              onClick={() => setShowInstallGuide(false)}
+              className="w-full py-2.5 rounded-xl bg-white text-black font-black text-xs hover:bg-neutral-200 active:scale-95 transition cursor-pointer shadow-md mt-2"
+            >
+              Got it!
+            </button>
+
+          </div>
+        </div>
+      )}
 
       {view === 'subject-detail' && selectedSubject ? (
         /* ========================================================================= */
